@@ -99,10 +99,31 @@ function seedData() {
 
   if (userCount === 0) {
     const mgmtDiv = db.prepare('SELECT id FROM divisions WHERE name = ?').get('Management');
+    const mgmtId = mgmtDiv ? mgmtDiv.id : 1;
+    
+    // Seed default owner
     db.prepare(
       'INSERT INTO users (name, phone, division_id, pin, role) VALUES (?, ?, ?, ?, ?)'
-    ).run('Admin BGE', '0000', mgmtDiv ? mgmtDiv.id : 1, hashPin('1234'), 'owner');
+    ).run('Admin BGE', '0000', mgmtId, hashPin('1234'), 'owner');
     console.log('✅ Seeded default owner (Phone: 0000, PIN: 1234)');
+
+    // Seed default employees
+    const employees = [
+      { name: 'Bowo', phone: '0811', div: 'Operation & Service' },
+      { name: 'Sari', phone: '0812', div: 'Engineering' },
+      { name: 'Dewi', phone: '0813', div: 'Admin & HR' }
+    ];
+
+    const insertUser = db.prepare(
+      'INSERT INTO users (name, phone, division_id, pin, role) VALUES (?, ?, ?, ?, ?)'
+    );
+
+    for (const emp of employees) {
+      const div = db.prepare('SELECT id FROM divisions WHERE name = ?').get(emp.div);
+      const divId = div ? div.id : mgmtId;
+      insertUser.run(emp.name, emp.phone, divId, hashPin('1234'), 'karyawan');
+    }
+    console.log('✅ Seeded default employees (Bowo: 0811, Sari: 0812, Dewi: 0813)');
   }
 }
 
