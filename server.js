@@ -492,8 +492,12 @@ app.use((err, req, res, next) => {
 // ============================================================
 // START SERVER
 // ============================================================
-app.listen(PORT, () => {
-  console.log(`\n🟢 Benua Green Energy — Daily Report`);
-  console.log(`   Server running at http://localhost:${PORT}`);
-  console.log(`   Default login → Phone: 0000, PIN: 1234\n`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`\n🟢 Benua Green Energy — Daily Report`);
+    console.log(`   Server running at http://localhost:${PORT}`);
+    console.log(`   Default login → Phone: 0000, PIN: 1234\n`);
+  });
+}
+
+module.exports = app;

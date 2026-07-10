@@ -2,11 +2,13 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 
-const DB_PATH = path.join(__dirname, 'data', 'daily_report.db');
+const DB_PATH = process.env.VERCEL
+  ? path.join('/tmp', 'daily_report.db')
+  : path.join(__dirname, 'data', 'daily_report.db');
 
 // Ensure data directory exists
 const fs = require('fs');
-const dataDir = path.join(__dirname, 'data');
+const dataDir = path.dirname(DB_PATH);
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
