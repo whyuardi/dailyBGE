@@ -1,15 +1,10 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "server.js",
-      "use": "@vercel/node"
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "node_modules/better-sqlite3/build/Release/better_sqlite3.node"
     }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "server.js"
-    }
+  },
+  "rewrites": [
+    { "source": "/(.*)", "destination": "api/index.js" }
   ]
 }
