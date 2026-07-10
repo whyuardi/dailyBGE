@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Kelola Divisi — Benua Green Energy">
+  <title>Divisi — BGE</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar" id="topbar"></header>
+
+    <main class="main">
+      <div class="page-head">
+        <div class="page-head-row">
+          <div>
+            <div class="page-title">Divisi</div>
+            <div class="page-desc">Kelola divisi perusahaan</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="openAddDivisionModal()">Tambah</button>
+        </div>
+      </div>
+
+      <div id="divisionsList"></div>
+    </main>
+
+    <nav class="bottomnav" id="bottomnav"></nav>
+  </div>
+
+  <script src="/js/utils.js"></script>
+  <script src="/js/manage-divisions.js"></script>
+</body>
+</html>

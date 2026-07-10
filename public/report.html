@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Daily Report — Benua Green Energy">
+  <title>Daily Report — BGE</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar" id="topbar"></header>
+
+    <main class="main">
+      <div class="page-head">
+        <div class="page-title">Daily Report</div>
+        <div class="page-desc" id="reportDate"></div>
+      </div>
+
+      <div id="reportStatus" style="display:none"></div>
+
+      <form id="reportForm">
+        <div class="section">
+          <div class="section-head">
+            <div class="section-dot completed"></div>
+            <div class="section-label">Completed</div>
+          </div>
+          <div class="items" id="completedItems"></div>
+          <button type="button" class="btn-add" onclick="addItem('completed')">
+            <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Tambah
+          </button>
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <div class="section-dot in-progress"></div>
+            <div class="section-label">In Progress</div>
+          </div>
+          <div class="items" id="in_progressItems"></div>
+          <button type="button" class="btn-add" onclick="addItem('in_progress')">
+            <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Tambah
+          </button>
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <div class="section-dot next-action"></div>
+            <div class="section-label">Next Action</div>
+          </div>
+          <div class="items" id="next_actionItems"></div>
+          <button type="button" class="btn-add" onclick="addItem('next_action')">
+            <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Tambah
+          </button>
+        </div>
+
+        <div class="actions">
+          <button type="submit" class="btn btn-primary" id="submitBtn">
+            Submit Report
+          </button>
+          <button type="button" class="btn btn-secondary" id="copyBtn" onclick="copyReport()">
+            Copy WhatsApp
+          </button>
+        </div>
+      </form>
+    </main>
+
+    <nav class="bottomnav" id="bottomnav"></nav>
+  </div>
+
+  <script src="/js/utils.js"></script>
+  <script src="/js/report.js"></script>
+</body>
+</html>

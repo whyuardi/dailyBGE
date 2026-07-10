@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Kelola Karyawan — Benua Green Energy">
+  <title>Karyawan — BGE</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar" id="topbar"></header>
+
+    <main class="main">
+      <div class="page-head">
+        <div class="page-head-row">
+          <div>
+            <div class="page-title">Karyawan</div>
+            <div class="page-desc">Kelola akun karyawan</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="openAddUserModal()">Tambah</button>
+        </div>
+      </div>
+
+      <div id="usersList"></div>
+    </main>
+
+    <nav class="bottomnav" id="bottomnav"></nav>
+  </div>
+
+  <script src="/js/utils.js"></script>
+  <script src="/js/manage-users.js"></script>
+</body>
+</html>
