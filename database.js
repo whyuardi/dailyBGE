@@ -95,9 +95,9 @@ function seedData() {
     console.log('✅ Seeded default divisions');
   }
 
-  const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+  const ownerCount = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'owner'").get().count;
 
-  if (userCount === 0) {
+  if (ownerCount === 0) {
     const mgmtDiv = db.prepare('SELECT id FROM divisions WHERE name = ?').get('Management');
     const mgmtId = mgmtDiv ? mgmtDiv.id : 1;
     
@@ -106,6 +106,13 @@ function seedData() {
       'INSERT INTO users (name, phone, division_id, pin, role) VALUES (?, ?, ?, ?, ?)'
     ).run('Admin BGE', '0000', mgmtId, hashPin('1234'), 'owner');
     console.log('✅ Seeded default owner (Phone: 0000, PIN: 1234)');
+  }
+
+  const employeeCount = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'karyawan'").get().count;
+
+  if (employeeCount === 0) {
+    const mgmtDiv = db.prepare('SELECT id FROM divisions WHERE name = ?').get('Management');
+    const mgmtId = mgmtDiv ? mgmtDiv.id : 1;
 
     // Seed default employees
     const employees = [
