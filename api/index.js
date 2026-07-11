@@ -2,7 +2,7 @@ const express = require('express');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
 const { db, initDb, hashPin, comparePin, getToday } = require('../database');
-const { authMiddleware, ownerOnly, generateToken } = require('../middleware');
+const { authMiddleware, ownerOnly, generateToken } = require('../auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
