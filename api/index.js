@@ -1,7 +1,7 @@
 const express = require('express');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
-const { db, hashPin, comparePin, getToday } = require('../database');
+const { db, initDb, hashPin, comparePin, getToday } = require('../database');
 const { authMiddleware, ownerOnly, generateToken } = require('../middleware');
 
 const app = express();
@@ -10,6 +10,17 @@ const PORT = process.env.PORT || 3000;
 // --- H-05: Request body size limit ---
 app.use(express.json({ limit: '10kb' }));
 app.use(express.static(path.join(__dirname, '../public')));
+
+// --- Ensure database is initialized before handling requests ---
+app.use(async (req, res, next) => {
+  try {
+    await initDb();
+    next();
+  } catch (err) {
+    console.error('❌ Database init error:', err);
+    res.status(500).json({ error: 'Database initialization failed.' });
+  }
+});
 
 // --- C-03: Rate limiting on login ---
 const loginLimiter = rateLimit({
@@ -449,10 +460,15 @@ app.use((err, req, res, next) => {
 // START SERVER
 // ============================================================
 if (!process.env.VERCEL) {
-  app.listen(PORT, () => {
-    console.log(`\n🟢 Benua Green Energy — Daily Report`);
-    console.log(`   Server running at http://localhost:${PORT}`);
-    console.log(`   Default login → Phone: 0000, PIN: 1234\n`);
+  initDb().then(() => {
+    app.listen(PORT, () => {
+      console.log(`\n🟢 Benua Green Energy — Daily Report`);
+      console.log(`   Server running at http://localhost:${PORT}`);
+      console.log(`   Default login → Phone: 0000, PIN: 1234\n`);
+    });
+  }).catch(err => {
+    console.error('❌ Failed to start:', err);
+    process.exit(1);
   });
 }
 

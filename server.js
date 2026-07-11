@@ -1,1 +1,1 @@
-require('./api/index.js');
+module.exports = require('./api/index.js');
