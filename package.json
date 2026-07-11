@@ -1,6 +1,6 @@
 {
   "name": "benua-daily-report",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Daily Report Web App — Benua Green Energy",
   "main": "server.js",
   "scripts": {
@@ -8,10 +8,10 @@
     "dev": "node server.js"
   },
   "dependencies": {
+    "@libsql/client": "^0.15.0",
     "bcryptjs": "^3.0.3",
     "express": "^4.21.0",
     "express-rate-limit": "^8.5.2",
-    "jsonwebtoken": "^9.0.3",
-    "sql.js": "^1.12.0"
+    "jsonwebtoken": "^9.0.3"
   }
 }

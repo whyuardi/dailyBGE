@@ -1,13 +1,16 @@
 const express = require('express');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
-const { db, initDb, hashPin, comparePin, getToday } = require('../database');
+const { initDb, dbGet, dbAll, dbRun, dbTransaction, hashPin, comparePin, getToday } = require('../database');
 const { authMiddleware, ownerOnly, generateToken } = require('../auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- H-05: Request body size limit ---
+// --- Async handler wrapper (catches errors for Express 4) ---
+const wrap = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
+// --- Request body size limit ---
 app.use(express.json({ limit: '10kb' }));
 app.use(express.static(path.join(__dirname, '../public')));
 
@@ -22,10 +25,10 @@ app.use(async (req, res, next) => {
   }
 });
 
-// --- C-03: Rate limiting on login ---
+// --- Rate limiting on login ---
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 attempts per window
+  windowMs: 15 * 60 * 1000,
+  max: 5,
   message: { error: 'Terlalu banyak percobaan login. Coba lagi dalam 15 menit.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -35,7 +38,7 @@ const loginLimiter = rateLimit({
 // AUTH ROUTES
 // ============================================================
 
-app.post('/api/auth/login', loginLimiter, (req, res) => {
+app.post('/api/auth/login', loginLimiter, wrap(async (req, res) => {
   const { phone, pin } = req.body;
 
   if (!phone || !pin) {
@@ -52,12 +55,13 @@ app.post('/api/auth/login', loginLimiter, (req, res) => {
     return res.status(400).json({ error: 'PIN harus 4 digit angka.' });
   }
 
-  const user = db.prepare(`
-    SELECT u.id, u.name, u.phone, u.role, u.pin, u.division_id, d.name as division_name
-    FROM users u
-    LEFT JOIN divisions d ON u.division_id = d.id
-    WHERE u.phone = ? AND u.is_active = 1
-  `).get(phoneTrimmed);
+  const user = await dbGet(
+    `SELECT u.id, u.name, u.phone, u.role, u.pin, u.division_id, d.name as division_name
+     FROM users u
+     LEFT JOIN divisions d ON u.division_id = d.id
+     WHERE u.phone = ? AND u.is_active = 1`,
+    phoneTrimmed
+  );
 
   if (!user || !comparePin(pinTrimmed, user.pin)) {
     return res.status(401).json({ error: 'Nomor HP atau PIN salah.' });
@@ -67,18 +71,18 @@ app.post('/api/auth/login', loginLimiter, (req, res) => {
   const { pin: _, ...safeUser } = user;
 
   res.json({ success: true, user: safeUser, token });
-});
+}));
 
 // ============================================================
 // DIVISION ROUTES
 // ============================================================
 
-app.get('/api/divisions', authMiddleware, (req, res) => {
-  const divisions = db.prepare('SELECT * FROM divisions ORDER BY name').all();
+app.get('/api/divisions', authMiddleware, wrap(async (req, res) => {
+  const divisions = await dbAll('SELECT * FROM divisions ORDER BY name');
   res.json(divisions);
-});
+}));
 
-app.post('/api/divisions', authMiddleware, ownerOnly, (req, res) => {
+app.post('/api/divisions', authMiddleware, ownerOnly, wrap(async (req, res) => {
   const { name } = req.body;
   if (!name || !String(name).trim()) {
     return res.status(400).json({ error: 'Nama divisi wajib diisi.' });
@@ -90,7 +94,7 @@ app.post('/api/divisions', authMiddleware, ownerOnly, (req, res) => {
   }
 
   try {
-    const result = db.prepare('INSERT INTO divisions (name) VALUES (?)').run(nameTrimmed);
+    const result = await dbRun('INSERT INTO divisions (name) VALUES (?)', nameTrimmed);
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (e) {
     if (e.message.includes('UNIQUE')) {
@@ -98,9 +102,9 @@ app.post('/api/divisions', authMiddleware, ownerOnly, (req, res) => {
     }
     throw e;
   }
-});
+}));
 
-app.put('/api/divisions/:id', authMiddleware, ownerOnly, (req, res) => {
+app.put('/api/divisions/:id', authMiddleware, ownerOnly, wrap(async (req, res) => {
   const { name } = req.body;
   if (!name || !String(name).trim()) {
     return res.status(400).json({ error: 'Nama divisi wajib diisi.' });
@@ -112,7 +116,7 @@ app.put('/api/divisions/:id', authMiddleware, ownerOnly, (req, res) => {
   }
 
   try {
-    db.prepare('UPDATE divisions SET name = ? WHERE id = ?').run(nameTrimmed, req.params.id);
+    await dbRun('UPDATE divisions SET name = ? WHERE id = ?', nameTrimmed, req.params.id);
     res.json({ success: true });
   } catch (e) {
     if (e.message.includes('UNIQUE')) {
@@ -120,33 +124,33 @@ app.put('/api/divisions/:id', authMiddleware, ownerOnly, (req, res) => {
     }
     throw e;
   }
-});
+}));
 
-app.delete('/api/divisions/:id', authMiddleware, ownerOnly, (req, res) => {
-  const usersInDiv = db.prepare('SELECT COUNT(*) as count FROM users WHERE division_id = ?').get(req.params.id);
+app.delete('/api/divisions/:id', authMiddleware, ownerOnly, wrap(async (req, res) => {
+  const usersInDiv = await dbGet('SELECT COUNT(*) as count FROM users WHERE division_id = ?', req.params.id);
   if (usersInDiv.count > 0) {
     return res.status(400).json({ error: 'Tidak bisa hapus divisi yang masih memiliki karyawan.' });
   }
-  db.prepare('DELETE FROM divisions WHERE id = ?').run(req.params.id);
+  await dbRun('DELETE FROM divisions WHERE id = ?', req.params.id);
   res.json({ success: true });
-});
+}));
 
 // ============================================================
 // USER MANAGEMENT ROUTES (Owner Only)
 // ============================================================
 
-app.get('/api/users', authMiddleware, ownerOnly, (req, res) => {
-  const users = db.prepare(`
-    SELECT u.id, u.name, u.phone, u.role, u.is_active, u.division_id, u.created_at,
-           d.name as division_name
-    FROM users u
-    LEFT JOIN divisions d ON u.division_id = d.id
-    ORDER BY u.role DESC, u.name ASC
-  `).all();
+app.get('/api/users', authMiddleware, ownerOnly, wrap(async (req, res) => {
+  const users = await dbAll(
+    `SELECT u.id, u.name, u.phone, u.role, u.is_active, u.division_id, u.created_at,
+            d.name as division_name
+     FROM users u
+     LEFT JOIN divisions d ON u.division_id = d.id
+     ORDER BY u.role DESC, u.name ASC`
+  );
   res.json(users);
-});
+}));
 
-app.post('/api/users', authMiddleware, ownerOnly, (req, res) => {
+app.post('/api/users', authMiddleware, ownerOnly, wrap(async (req, res) => {
   const { name, phone, pin, division_id, role } = req.body;
 
   if (!name || !phone || !pin || !division_id) {
@@ -160,11 +164,9 @@ app.post('/api/users', authMiddleware, ownerOnly, (req, res) => {
   if (nameTrimmed.length > 100) {
     return res.status(400).json({ error: 'Nama maksimal 100 karakter.' });
   }
-
   if (!/^\d{4,20}$/.test(phoneTrimmed)) {
     return res.status(400).json({ error: 'Nomor HP harus berupa 4-20 digit angka.' });
   }
-
   if (pinTrimmed.length !== 4 || !/^\d{4}$/.test(pinTrimmed)) {
     return res.status(400).json({ error: 'PIN harus 4 digit angka.' });
   }
@@ -175,9 +177,10 @@ app.post('/api/users', authMiddleware, ownerOnly, (req, res) => {
   }
 
   try {
-    const result = db.prepare(
-      'INSERT INTO users (name, phone, pin, division_id, role) VALUES (?, ?, ?, ?, ?)'
-    ).run(nameTrimmed, phoneTrimmed, hashPin(pinTrimmed), division_id, userRole);
+    const result = await dbRun(
+      'INSERT INTO users (name, phone, pin, division_id, role) VALUES (?, ?, ?, ?, ?)',
+      nameTrimmed, phoneTrimmed, hashPin(pinTrimmed), division_id, userRole
+    );
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (e) {
     if (e.message.includes('UNIQUE')) {
@@ -185,13 +188,13 @@ app.post('/api/users', authMiddleware, ownerOnly, (req, res) => {
     }
     throw e;
   }
-});
+}));
 
-app.put('/api/users/:id', authMiddleware, ownerOnly, (req, res) => {
+app.put('/api/users/:id', authMiddleware, ownerOnly, wrap(async (req, res) => {
   const { name, phone, pin, division_id, role, is_active } = req.body;
   const userId = req.params.id;
 
-  const existing = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+  const existing = await dbGet('SELECT * FROM users WHERE id = ?', userId);
   if (!existing) {
     return res.status(404).json({ error: 'User tidak ditemukan.' });
   }
@@ -240,7 +243,7 @@ app.put('/api/users/:id', authMiddleware, ownerOnly, (req, res) => {
   values.push(userId);
 
   try {
-    db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    await dbRun(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, ...values);
     res.json({ success: true });
   } catch (e) {
     if (e.message.includes('UNIQUE')) {
@@ -248,39 +251,39 @@ app.put('/api/users/:id', authMiddleware, ownerOnly, (req, res) => {
     }
     throw e;
   }
-});
+}));
 
-app.delete('/api/users/:id', authMiddleware, ownerOnly, (req, res) => {
+app.delete('/api/users/:id', authMiddleware, ownerOnly, wrap(async (req, res) => {
   const userId = parseInt(req.params.id);
 
   if (userId === req.user.id) {
     return res.status(400).json({ error: 'Tidak bisa menghapus akun sendiri.' });
   }
 
-  db.prepare('UPDATE users SET is_active = 0 WHERE id = ?').run(userId);
+  await dbRun('UPDATE users SET is_active = 0 WHERE id = ?', userId);
   res.json({ success: true });
-});
+}));
 
 // ============================================================
 // REPORT ROUTES
 // ============================================================
 
-app.get('/api/reports/today', authMiddleware, (req, res) => {
+app.get('/api/reports/today', authMiddleware, wrap(async (req, res) => {
   const today = getToday();
-  const report = db.prepare('SELECT * FROM reports WHERE user_id = ? AND report_date = ?').get(req.user.id, today);
+  const report = await dbGet('SELECT * FROM reports WHERE user_id = ? AND report_date = ?', req.user.id, today);
 
   if (!report) {
     return res.json({ report: null, items: [] });
   }
 
-  const items = db.prepare('SELECT * FROM report_items WHERE report_id = ? ORDER BY category, sort_order').all(report.id);
+  const items = await dbAll('SELECT * FROM report_items WHERE report_id = ? ORDER BY category, sort_order', report.id);
   res.json({ report, items });
-});
+}));
 
-app.get('/api/reports/mine', authMiddleware, (req, res) => {
+app.get('/api/reports/mine', authMiddleware, wrap(async (req, res) => {
   const { from, to } = req.query;
   let query = `
-    SELECT r.*, 
+    SELECT r.*,
       (SELECT COUNT(*) FROM report_items ri WHERE ri.report_id = r.id AND ri.category = 'completed') as completed_count,
       (SELECT COUNT(*) FROM report_items ri WHERE ri.report_id = r.id AND ri.category = 'in_progress') as in_progress_count,
       (SELECT COUNT(*) FROM report_items ri WHERE ri.report_id = r.id AND ri.category = 'next_action') as next_action_count
@@ -294,18 +297,19 @@ app.get('/api/reports/mine', authMiddleware, (req, res) => {
 
   query += ' ORDER BY r.report_date DESC LIMIT 50';
 
-  const reports = db.prepare(query).all(...params);
+  const reports = await dbAll(query, ...params);
   res.json(reports);
-});
+}));
 
-app.get('/api/reports/:id', authMiddleware, (req, res) => {
-  const report = db.prepare(`
-    SELECT r.*, u.name as user_name, d.name as division_name 
-    FROM reports r
-    JOIN users u ON r.user_id = u.id
-    LEFT JOIN divisions d ON u.division_id = d.id
-    WHERE r.id = ?
-  `).get(req.params.id);
+app.get('/api/reports/:id', authMiddleware, wrap(async (req, res) => {
+  const report = await dbGet(
+    `SELECT r.*, u.name as user_name, d.name as division_name
+     FROM reports r
+     JOIN users u ON r.user_id = u.id
+     LEFT JOIN divisions d ON u.division_id = d.id
+     WHERE r.id = ?`,
+    req.params.id
+  );
 
   if (!report) {
     return res.status(404).json({ error: 'Report tidak ditemukan.' });
@@ -315,11 +319,11 @@ app.get('/api/reports/:id', authMiddleware, (req, res) => {
     return res.status(403).json({ error: 'Akses ditolak.' });
   }
 
-  const items = db.prepare('SELECT * FROM report_items WHERE report_id = ? ORDER BY category, sort_order').all(report.id);
+  const items = await dbAll('SELECT * FROM report_items WHERE report_id = ? ORDER BY category, sort_order', report.id);
   res.json({ report, items });
-});
+}));
 
-app.post('/api/reports', authMiddleware, (req, res) => {
+app.post('/api/reports', authMiddleware, wrap(async (req, res) => {
   const { items } = req.body;
   const today = getToday();
 
@@ -343,37 +347,38 @@ app.post('/api/reports', authMiddleware, (req, res) => {
     }
   }
 
-  const existingReport = db.prepare('SELECT * FROM reports WHERE user_id = ? AND report_date = ?').get(req.user.id, today);
+  const existingReport = await dbGet('SELECT * FROM reports WHERE user_id = ? AND report_date = ?', req.user.id, today);
 
-  const transaction = db.transaction(() => {
-    let reportId;
+  const reportId = await dbTransaction(async (tx) => {
+    let id;
 
     if (existingReport) {
-      db.prepare('UPDATE reports SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(existingReport.id);
-      db.prepare('DELETE FROM report_items WHERE report_id = ?').run(existingReport.id);
-      reportId = existingReport.id;
+      await tx.run('UPDATE reports SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', existingReport.id);
+      await tx.run('DELETE FROM report_items WHERE report_id = ?', existingReport.id);
+      id = existingReport.id;
     } else {
-      const result = db.prepare('INSERT INTO reports (user_id, report_date) VALUES (?, ?)').run(req.user.id, today);
-      reportId = result.lastInsertRowid;
+      const result = await tx.run('INSERT INTO reports (user_id, report_date) VALUES (?, ?)', req.user.id, today);
+      id = result.lastInsertRowid;
     }
 
-    const insertItem = db.prepare('INSERT INTO report_items (report_id, category, content, sort_order) VALUES (?, ?, ?, ?)');
     for (let i = 0; i < items.length; i++) {
-      insertItem.run(reportId, items[i].category, String(items[i].content).trim(), i);
+      await tx.run(
+        'INSERT INTO report_items (report_id, category, content, sort_order) VALUES (?, ?, ?, ?)',
+        id, items[i].category, String(items[i].content).trim(), i
+      );
     }
 
-    return reportId;
+    return id;
   });
 
-  const reportId = transaction();
   res.json({ success: true, id: reportId, isUpdate: !!existingReport });
-});
+}));
 
 // ============================================================
 // DASHBOARD ROUTES (Owner Only)
 // ============================================================
 
-app.get('/api/dashboard', authMiddleware, ownerOnly, (req, res) => {
+app.get('/api/dashboard', authMiddleware, ownerOnly, wrap(async (req, res) => {
   const date = req.query.date || getToday();
   const divisionId = req.query.division_id;
 
@@ -393,49 +398,53 @@ app.get('/api/dashboard', authMiddleware, ownerOnly, (req, res) => {
 
   query += ' ORDER BY d.name, u.name';
 
-  const reports = db.prepare(query).all(...params);
+  const reports = await dbAll(query, ...params);
 
-  const getItems = db.prepare('SELECT * FROM report_items WHERE report_id = ? ORDER BY category, sort_order');
-  const result = reports.map(r => ({
-    ...r,
-    items: getItems.all(r.id)
-  }));
+  const result = [];
+  for (const r of reports) {
+    const items = await dbAll('SELECT * FROM report_items WHERE report_id = ? ORDER BY category, sort_order', r.id);
+    result.push({ ...r, items });
+  }
 
   res.json(result);
-});
+}));
 
-app.get('/api/dashboard/missing', authMiddleware, ownerOnly, (req, res) => {
+app.get('/api/dashboard/missing', authMiddleware, ownerOnly, wrap(async (req, res) => {
   const date = req.query.date || getToday();
 
-  const missing = db.prepare(`
-    SELECT u.id, u.name, u.phone, d.name as division_name
-    FROM users u
-    LEFT JOIN divisions d ON u.division_id = d.id
-    WHERE u.is_active = 1
-      AND u.id NOT IN (
-        SELECT user_id FROM reports WHERE report_date = ?
-      )
-    ORDER BY d.name, u.name
-  `).all(date);
+  const missing = await dbAll(
+    `SELECT u.id, u.name, u.phone, d.name as division_name
+     FROM users u
+     LEFT JOIN divisions d ON u.division_id = d.id
+     WHERE u.is_active = 1
+       AND u.id NOT IN (
+         SELECT user_id FROM reports WHERE report_date = ?
+       )
+     ORDER BY d.name, u.name`,
+    date
+  );
 
   res.json(missing);
-});
+}));
 
-app.get('/api/dashboard/stats', authMiddleware, ownerOnly, (req, res) => {
+app.get('/api/dashboard/stats', authMiddleware, ownerOnly, wrap(async (req, res) => {
   const date = req.query.date || getToday();
 
-  const totalUsers = db.prepare('SELECT COUNT(*) as count FROM users WHERE is_active = 1').get().count;
-  const submittedToday = db.prepare('SELECT COUNT(*) as count FROM reports WHERE report_date = ?').get(date).count;
-  const totalDivisions = db.prepare('SELECT COUNT(*) as count FROM divisions').get().count;
+  const totalUsersRow = await dbGet('SELECT COUNT(*) as count FROM users WHERE is_active = 1');
+  const submittedRow = await dbGet('SELECT COUNT(*) as count FROM reports WHERE report_date = ?', date);
+  const totalDivsRow = await dbGet('SELECT COUNT(*) as count FROM divisions');
+
+  const totalUsers = totalUsersRow.count;
+  const submittedToday = submittedRow.count;
 
   res.json({
     total_users: totalUsers,
     submitted_today: submittedToday,
     missing_today: totalUsers - submittedToday,
-    total_divisions: totalDivisions,
+    total_divisions: totalDivsRow.count,
     date
   });
-});
+}));
 
 // ============================================================
 // SPA FALLBACK

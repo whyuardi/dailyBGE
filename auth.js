@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { db } = require('./database');
+const { dbGet } = require('./database');
 
 // JWT secret — in production, use an environment variable
 const JWT_SECRET = process.env.JWT_SECRET || 'bge-daily-report-secret-key-change-in-production';
@@ -13,7 +13,7 @@ function generateToken(user) {
   );
 }
 
-function authMiddleware(req, res, next) {
+async function authMiddleware(req, res, next) {
   const authHeader = req.headers['authorization'];
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -25,12 +25,13 @@ function authMiddleware(req, res, next) {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
 
-    const user = db.prepare(`
-      SELECT u.*, d.name as division_name 
-      FROM users u 
-      LEFT JOIN divisions d ON u.division_id = d.id 
-      WHERE u.id = ? AND u.is_active = 1
-    `).get(decoded.id);
+    const user = await dbGet(
+      `SELECT u.*, d.name as division_name
+       FROM users u
+       LEFT JOIN divisions d ON u.division_id = d.id
+       WHERE u.id = ? AND u.is_active = 1`,
+      decoded.id
+    );
 
     if (!user) {
       return res.status(401).json({ error: 'User not found or inactive.' });
