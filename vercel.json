@@ -2,12 +2,6 @@
   "functions": {
     "server.js": {
       "includeFiles": "node_modules/better-sqlite3/build/Release/better_sqlite3.node"
-    },
-    "api/index.js": {
-      "includeFiles": "node_modules/better-sqlite3/build/Release/better_sqlite3.node"
     }
-  },
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "api/index.js" }
-  ]
+  }
 }
